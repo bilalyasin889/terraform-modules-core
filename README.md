@@ -22,11 +22,24 @@ tests/          # Module-specific Terragrunt test folders
 ### 1. Scaffold a New Module
 Use the script:
 ```bash
-scripts/generate_module.sh <module_name>
+scripts/generate_module.sh
 ```
+- Prompts for module name (required) and description (optional).
+- Generates module folder in modules/<module_name> with template files:
+  - main.tf
+  - variables.tf
+  - outputs.tf
+  - README.md (includes tables for inputs and outputs, and example usage with placeholders)
+- Creates test folder inside the module with:
+  - terragrunt.hcl (local backend, inputs placeholders)
+  - test.sh (Linux/macOS)
+  - test.ps1 (Windows PowerShell)
+- All placeholders are prefixed with TODO_ and must be replaced by the user.
+
+Prompts to optionally stage the module files in Git if inside a Git repository.
 - Generates module folder with `main.tf`, `variables.tf`, `outputs.tf`, `README.md` templates
 - Creates test folder in `tests/<module_name>` with `terragrunt.hcl`, `terraform.tfvars`, and `verify.sh`
-- All placeholders are prefixed with `TODO_` and must be replaced
+- All placeholders are prefixed with `TODO` and must be replaced
 
 ### 2. Testing Modules
 Navigate to:
@@ -35,7 +48,7 @@ tests/<module_name>
 ```
 Run:
 ``` bash
-./verify.sh
+./test.sh
 ```
 This executes the full lifecycle:
 - `init`
@@ -54,7 +67,6 @@ scripts/release_modules.sh <major|minor|patch>
 ```
 - Executes all module tests
 - Increments semantic version (`patch`, `minor`, `major`)
-- Generates documentation using `generate_docs.sh`
 
 ---
 
