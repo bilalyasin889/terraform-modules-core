@@ -4,6 +4,7 @@
 # .tfstate files
 *.tfstate
 *.tfstate.*
+.terraform.lock.hcl
 
 # Crash log files
 crash.log
@@ -35,3 +36,13 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# Terragrunt
+.terragrunt-cache/
+
+# Logs / temp files
+*.log
+
+# IntelliJ
+*.iml
+/.idea/
