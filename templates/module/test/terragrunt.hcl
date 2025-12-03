@@ -1,11 +1,7 @@
 # Terragrunt test configuration for <module_name>
 
 terraform {
-  source = "../.."
-
-  backend "local" {
-    path = "terraform.tfstate"
-  }
+  source = "../"
 }
 
 inputs = {
