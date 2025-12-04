@@ -1,0 +1,61 @@
+package test
+
+import (
+	"testing"
+
+	"github.com/gruntwork-io/terratest/modules/logger"
+	"github.com/gruntwork-io/terratest/modules/terraform"
+	"github.com/stretchr/testify/assert"
+)
+
+// TODO: Rename tests to something more meaningful
+func TestExample(t *testing.T) {
+
+	// Define scenarios for this module
+	scenarios := []struct {
+		Name     string
+		Vars     map[string]interface{}
+		Expected map[string]interface{}
+	}{
+		{
+			Name: "default",
+			Vars: map[string]interface{}{
+				// TODO: module-specific variables
+			},
+			Expected: map[string]interface{}{
+				// TODO: expected outputs or resource properties
+			},
+		},
+		// Add more scenarios as needed
+	}
+
+	for _, scenario := range scenarios {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			// Optionally make tests sequential (avoid t.Parallel() if using shared Terraform state)
+
+			terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+				TerraformDir: "../../modules/<module_name>",
+				Vars:         scenario.Vars,
+				Logger:       logger.Default,
+				// TODO: add EnvVars, BackendConfig, etc. if needed
+			})
+
+			// Use a workspace per scenario
+			terraform.WorkspaceSelectOrNew(t, terraformOptions, scenario.Name)
+
+			// Ensure cleanup
+			defer terraform.Destroy(t, terraformOptions)
+
+			// Apply Terraform
+			terraform.InitAndApply(t, terraformOptions)
+
+			// TODO: validate outputs if needed
+			// Example:
+			// output := terraform.Output(t, terraformOptions, "output_name")
+			// assert.Equal(t, scenario.Expected["output_name"], output)
+
+			// TODO: validate resource properties via SDK if needed
+		})
+	}
+}
