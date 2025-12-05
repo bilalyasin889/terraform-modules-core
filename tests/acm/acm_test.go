@@ -89,6 +89,8 @@ func TestACMModule(t *testing.T) {
 
 			certArn := aws.GetAcmCertificateArn(t, expected["region"].(string), expected["domain_name"].(string))
 			certArnOutput := terraform.Output(t, terraformOptions, "certificate_arn")
+			assert.NotEmpty(t, certArn)
+			assert.NotEmpty(t, certArnOutput)
 			assert.Equal(t, certArn, certArnOutput)
 
 			cert := GetCertificate(t, expected["region"].(string), certArn)
