@@ -1,140 +1,162 @@
 package test
 
 import (
+	"fmt"
+	"os"
+	s3Utils "terraform-modules-core/tests/s3_bucket/utils"
+	coreUtils "terraform-modules-core/tests/utils"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gruntwork-io/terratest/modules/aws"
 	"github.com/gruntwork-io/terratest/modules/logger"
 	"github.com/gruntwork-io/terratest/modules/terraform"
 
 	"github.com/stretchr/testify/assert"
-
-	"fmt"
 )
 
 const REGION = "eu-west-2"
 
-func TestS3BucketModule(t *testing.T) {
-	scenarios := []struct {
-		Name     string
-		Vars     map[string]interface{}
-		Expected map[string]interface{}
-	}{
-		{
-			Name: "public_read_enabled_and_cors_enabled",
-			Vars: map[string]interface{}{
-				"bucket_name": "terraform-terratest-bucket-1",
-				"tags":        map[string]string{"CreatedBy": "terraform"},
-				"public_read": map[string]interface{}{
-					"enabled":         true,
-					"allowed_domains": []string{"https://example.com"},
-				},
-				"put_cors": map[string]interface{}{
-					"enabled":         true,
-					"allowed_domains": []string{"https://example.com"},
-				},
-			},
-			Expected: map[string]interface{}{
-				"bucket_name":        "terraform-terratest-bucket-1",
-				"arn":                "arn:aws:s3:::terraform-terratest-bucket-1",
-				"bucket_domain_name": "terraform-terratest-bucket-1.s3.eu-west-2.amazonaws.com",
-				"versioning_enabled": false,
-				"public_read":        true,
-				"allowed_get_domain": "https://example.com",
-				"tags":               map[string]string{"CreatedBy": "terraform"},
-			},
-		},
-		{
-			Name: "versioning_enabled_and_force_destroy_enabled",
-			Vars: map[string]interface{}{
-				"bucket_name":         "terraform-terratest-bucket-2",
-				"tags":                map[string]string{"CreatedBy": "terraform"},
-				"versioning_enabled":  true,
-				"allow_force_destroy": true,
-			},
-			Expected: map[string]interface{}{
-				"bucket_name":        "terraform-terratest-bucket-2",
-				"arn":                "arn:aws:s3:::terraform-terratest-bucket-2",
-				"bucket_domain_name": "terraform-terratest-bucket-2.s3.eu-west-2.amazonaws.com",
-				"versioning_enabled": true,
-				"public_read":        false,
-				"tags":               map[string]string{"CreatedBy": "terraform"},
-			},
-		},
+var s3Client *s3.Client
+var accountId string
+
+func TestMain(m *testing.M) {
+	s3Client = aws.NewS3Client(nil, REGION)
+
+	id, err := coreUtils.GetAWSAccountID(REGION)
+	if err != nil {
+		fmt.Printf("Error retrieving AWS account ID: %v\n", err)
+		os.Exit(1)
+	} else {
+		accountId = id
 	}
 
-	for _, scenario := range scenarios {
-		scenario := scenario
-		t.Run(scenario.Name, func(t *testing.T) {
-			terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
-				TerraformDir: "../../modules/s3_bucket",
-				Vars:         scenario.Vars,
-				Logger:       logger.Default,
-			})
-
-			terraform.WorkspaceSelectOrNew(t, terraformOptions, scenario.Name)
-
-			expected := scenario.Expected
-
-			defer terraform.Destroy(t, terraformOptions)
-			terraform.InitAndApply(t, terraformOptions)
-
-			expectBucketName := expected["bucket_name"].(string)
-
-			//Verify bucket exists
-			aws.AssertS3BucketExists(t, REGION, expectBucketName)
-
-			// Verify outputs
-			actualBucketName := terraform.Output(t, terraformOptions, "bucket_name")
-			assert.Equal(t, expectBucketName, actualBucketName)
-
-			actualBucketId := terraform.Output(t, terraformOptions, "bucket_id")
-			assert.Equal(t, expectBucketName, actualBucketId)
-
-			expectBucketArn := expected["arn"].(string)
-			actualBucketArn := terraform.Output(t, terraformOptions, "bucket_arn")
-			assert.Equal(t, expectBucketArn, actualBucketArn)
-
-			expectDomainName := expected["bucket_domain_name"].(string)
-			actualDomainName := terraform.Output(t, terraformOptions, "bucket_domain_name")
-			assert.Equal(t, expectDomainName, actualDomainName)
-
-			// Validate internal properties
-			expectVersioning := expected["versioning_enabled"].(bool)
-			actualVersioning := aws.GetS3BucketVersioning(t, REGION, expectBucketName)
-			if expectVersioning {
-				assert.Equal(t, "Enabled", actualVersioning)
-			} else {
-				assert.Empty(t, actualVersioning, "Versioning should not be enabled")
-			}
-
-			// Check public read access via bucket policy
-			expectPublicRead := expected["public_read"].(bool)
-			if expectPublicRead {
-				actualBucketPolicy := aws.GetS3BucketPolicy(t, REGION, expectBucketName)
-
-				expectedAllowedDomain := expected["allowed_get_domain"].(string)
-				expectedBucketPolicy := expectedGetBucketPolicy(expectBucketName, expectedAllowedDomain)
-
-				assert.Contains(t, actualBucketPolicy, expectedBucketPolicy, "Bucket policy should contain expected value", []string{actualBucketPolicy})
-			} else {
-				policyExists, _ := aws.GetS3BucketPolicyE(t, REGION, expectBucketName)
-
-				assert.Empty(t, policyExists, "Bucket policy should not exist")
-			}
-
-			// Check tags
-			expectedTags := expected["tags"].(map[string]string)
-			actualTags := aws.GetS3BucketTags(t, REGION, expectBucketName)
-			assert.Equal(t, expectedTags, actualTags)
-		})
-	}
+	os.Exit(m.Run())
 }
 
-func expectedGetBucketPolicy(bucketName, domain string) string {
-	return fmt.Sprintf(
-		`{"Sid":"AllowGetFromAllowedDomains","Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::%s/*","Condition":{"StringLike":{"aws:Referer":"%s"}}}`,
-		bucketName,
-		domain,
-	)
+// ----------------------------
+// BASIC TEST
+// ----------------------------
+func TestS3BucketBasic(t *testing.T) {
+	bucketName := "terraform-terratest-basic"
+	tags := map[string]string{"CreatedBy": "terratest"}
+
+	opts := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+		TerraformDir: "../../modules/s3_bucket",
+		Vars: map[string]interface{}{
+			"bucket_name": bucketName,
+			"tags":        tags,
+		},
+		Logger: logger.Default,
+	})
+
+	terraform.WorkspaceSelectOrNew(t, opts, "basic")
+	defer terraform.Destroy(t, opts)
+	terraform.InitAndApply(t, opts)
+
+	aws.AssertS3BucketExists(t, REGION, bucketName)
+
+	assert.Equal(t, bucketName, terraform.Output(t, opts, "bucket_name"))
+	assert.Equal(t, bucketName, terraform.Output(t, opts, "bucket_id"))
+
+	actualTags := aws.GetS3BucketTags(t, REGION, bucketName)
+	assert.Equal(t, tags, actualTags)
+}
+
+// ----------------------------
+// PUBLIC READ ONLY
+// ----------------------------
+func TestS3BucketPublicRead(t *testing.T) {
+	bucketName := "terraform-terratest-public-read"
+	tags := map[string]string{"CreatedBy": "terratest"}
+	allowedDomains := []string{
+		"https://example.com",
+		"https://www.example.com",
+	}
+
+	opts := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+		TerraformDir: "../../modules/s3_bucket",
+		Vars: map[string]interface{}{
+			"bucket_name": bucketName,
+			"tags":        tags,
+			"public_read": map[string]interface{}{
+				"enabled":         true,
+				"allowed_domains": allowedDomains,
+			},
+		},
+		Logger: logger.Default,
+	})
+
+	terraform.WorkspaceSelectOrNew(t, opts, "public-read")
+	defer terraform.Destroy(t, opts)
+	terraform.InitAndApply(t, opts)
+
+	aws.AssertS3BucketExists(t, REGION, bucketName)
+
+	// Validate public access block is set as expected
+	s3Utils.AssertS3PublicAccessBlock(t, s3Client, accountId, bucketName, true, true, false, false)
+
+	// Validate bucket policy contains expected values
+	s3Utils.AssertBucketPolicyAllowsGet(t, s3Client, accountId, bucketName, allowedDomains)
+}
+
+// ----------------------------
+// PUT CORS ONLY
+// ----------------------------
+func TestS3BucketPutCors(t *testing.T) {
+	bucketName := "terraform-terratest-cors"
+	allowedDomains := []string{
+		"https://example.com",
+		"https://www.example.com",
+	}
+	opts := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+		TerraformDir: "../../modules/s3_bucket",
+		Vars: map[string]interface{}{
+			"bucket_name": bucketName,
+			"tags":        map[string]string{"CreatedBy": "terratest"},
+			"put_cors": map[string]interface{}{
+				"enabled":         true,
+				"allowed_domains": allowedDomains,
+			},
+		},
+		Logger: logger.Default,
+	})
+
+	terraform.WorkspaceSelectOrNew(t, opts, "cors")
+	defer terraform.Destroy(t, opts)
+	terraform.InitAndApply(t, opts)
+
+	aws.AssertS3BucketExists(t, REGION, bucketName)
+
+	expectedMethods := []string{"PUT"}
+	expectedHeaders := []string{"*"}
+	expectedMaxAge := int32(300)
+	s3Utils.AssertBucketCors(t, s3Client, accountId, bucketName, expectedMethods, allowedDomains, expectedHeaders, expectedMaxAge)
+}
+
+// ----------------------------
+// VERSIONING + FORCE DESTROY
+// ----------------------------
+func TestS3BucketVersioningForceDestroy(t *testing.T) {
+	bucketName := "terraform-terratest-versioning"
+
+	opts := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+		TerraformDir: "../../modules/s3_bucket",
+		Vars: map[string]interface{}{
+			"bucket_name":         bucketName,
+			"tags":                map[string]string{"CreatedBy": "terratest"},
+			"versioning_enabled":  true,
+			"allow_force_destroy": true,
+		},
+		Logger: logger.Default,
+	})
+
+	terraform.WorkspaceSelectOrNew(t, opts, "versioning")
+	defer terraform.Destroy(t, opts)
+	terraform.InitAndApply(t, opts)
+
+	aws.AssertS3BucketExists(t, REGION, bucketName)
+
+	versioning := aws.GetS3BucketVersioning(t, REGION, bucketName)
+	assert.Equal(t, "Enabled", versioning)
 }
