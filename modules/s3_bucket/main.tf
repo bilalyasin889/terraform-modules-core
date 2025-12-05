@@ -4,6 +4,11 @@
 #              versioning, policies and CORS.
 ##############################
 
+locals {
+  # Allow public access only if public read is enabled and domains are provided
+  allow_public_access = var.public_read.enabled && length(var.public_read.allowed_domains) > 0
+}
+
 # -----------------------------
 # Main S3 bucket
 # -----------------------------
@@ -22,21 +27,21 @@ resource "aws_s3_bucket_versioning" "versioning" {
 }
 
 resource "aws_s3_bucket_public_access_block" "public_access_block" {
-  count  = var.public_read.enabled && length(var.public_read.allowed_domains) > 0 ? 1 : 0
+  count  = local.allow_public_access ? 1 : 0
 
   bucket = aws_s3_bucket.this.id
 
   block_public_acls       = true
-  block_public_policy     = !(var.public_read.enabled && length(var.public_read.allowed_domains) > 0)
-  restrict_public_buckets = !(var.public_read.enabled && length(var.public_read.allowed_domains) > 0)
   ignore_public_acls      = true
+  block_public_policy     = !(local.allow_public_access)
+  restrict_public_buckets = !(local.allow_public_access)
 }
 
 # -----------------------------
 # Conditionally create GET policy if enabled and domains are provided
 # -----------------------------
 resource "aws_s3_bucket_policy" "get_policy" {
-  count  = var.public_read.enabled && length(var.public_read.allowed_domains) > 0 ? 1 : 0
+  count  = local.allow_public_access ? 1 : 0
   bucket = aws_s3_bucket.this.id
 
   policy = jsonencode({
