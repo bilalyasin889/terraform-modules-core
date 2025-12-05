@@ -46,3 +46,5 @@ terraform.rc
 # IntelliJ
 *.iml
 /.idea/
+
+/tests/.env
