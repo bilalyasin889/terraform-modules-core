@@ -3,6 +3,10 @@
 # Description: Provision an ACM certificate with DNS validation via Route53.
 ##############################
 
+locals {
+  manual_validation = var.hosted_zone_id == null
+}
+
 # -----------------------------
 # ACM Certificate
 # -----------------------------
@@ -24,6 +28,7 @@ resource "aws_route53_record" "validation" {
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
     }
+    if local.manual_validation == false
   }
 
   allow_overwrite = true
@@ -38,6 +43,8 @@ resource "aws_route53_record" "validation" {
 # Validate ACM certificate
 # -----------------------------
 resource "aws_acm_certificate_validation" "this" {
+  count                   = local.manual_validation == false ? 1 : 0
+
   region                  = var.region
   certificate_arn         = aws_acm_certificate.this.arn
   validation_record_fqdns = [for record in aws_route53_record.validation : record.fqdn]

@@ -9,7 +9,8 @@ variable "domain_name" {
 
 variable "hosted_zone_id" {
   type        = string
-  description = "Route53 Hosted Zone ID for DNS validation."
+  default     = null
+  description = "Route53 Hosted Zone ID for DNS validation. Leave empty for manual validation."
 }
 
 variable "subject_alternative_names" {

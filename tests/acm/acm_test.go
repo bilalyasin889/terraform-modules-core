@@ -48,9 +48,10 @@ func TestACMModule(t *testing.T) {
 				"tags":           map[string]string{"CreatedBy": "terratest"},
 			},
 			Expected: map[string]interface{}{
-				"domain_name": "test." + tld,
-				"tags":        map[string]string{"CreatedBy": "terratest"},
-				"region":      "us-east-1",
+				"domain_name":   "test." + tld,
+				"tags":          map[string]string{"CreatedBy": "terratest"},
+				"region":        "us-east-1",
+				"auto_validate": true,
 			},
 		},
 		{
@@ -62,10 +63,24 @@ func TestACMModule(t *testing.T) {
 				"tags":                      map[string]string{"CreatedBy": "terratest"},
 			},
 			Expected: map[string]interface{}{
+				"domain_name":   "test." + tld,
+				"tags":          map[string]string{"CreatedBy": "terratest"},
+				"san":           []string{"www.test." + tld},
+				"region":        "eu-west-2",
+				"auto_validate": true,
+			},
+		},
+		{
+			Name: "manual_validation",
+			Vars: map[string]interface{}{
 				"domain_name": "test." + tld,
 				"tags":        map[string]string{"CreatedBy": "terratest"},
-				"san":         []string{"www.test." + tld},
-				"region":      "eu-west-2",
+			},
+			Expected: map[string]interface{}{
+				"domain_name":   "test." + tld,
+				"tags":          map[string]string{"CreatedBy": "terratest"},
+				"region":        "eu-west-2",
+				"auto_validate": false,
 			},
 		},
 	}
@@ -87,11 +102,8 @@ func TestACMModule(t *testing.T) {
 
 			expected := scenario.Expected
 
-			certArn := aws.GetAcmCertificateArn(t, expected["region"].(string), expected["domain_name"].(string))
-			certArnOutput := terraform.Output(t, terraformOptions, "certificate_arn")
+			certArn := terraform.Output(t, terraformOptions, "certificate_arn")
 			assert.NotEmpty(t, certArn)
-			assert.NotEmpty(t, certArnOutput)
-			assert.Equal(t, certArn, certArnOutput)
 
 			cert := GetCertificate(t, expected["region"].(string), certArn)
 			expectedDomainNames := []string{expected["domain_name"].(string)}
@@ -100,7 +112,11 @@ func TestACMModule(t *testing.T) {
 			}
 			assert.Equal(t, expectedDomainNames, cert.SubjectAlternativeNames)
 
-			assert.Equal(t, types.CertificateStatusIssued, cert.Status)
+			if expected["auto_validate"] == true {
+				assert.Equal(t, types.CertificateStatusIssued, cert.Status)
+			} else {
+				assert.Equal(t, types.CertificateStatusPendingValidation, cert.Status)
+			}
 
 			tags := ListTags(t, expected["region"].(string), certArn)
 			assert.Equal(t, expected["tags"], tags)
