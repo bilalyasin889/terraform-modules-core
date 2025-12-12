@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"terraform-modules-core/tests/utils"
 	"testing"
@@ -19,16 +18,7 @@ var tld string
 var zoneID string
 
 func TestMain(m *testing.M) {
-	utils.LoadTestEnv()
-
-	tld = os.Getenv("TEST_TLD")
-	zoneID = os.Getenv("TEST_HOSTED_ZONE_ID")
-
-	// Skip if TEST_HOSTED_ZONE_ID is not set
-	if zoneID == "" || tld == "" {
-		fmt.Printf("Environment variables %v must be set.\n", []string{"TEST_HOSTED_ZONE_ID", "TEST_TLD"})
-		os.Exit(1)
-	}
+	zoneID, tld = utils.GetDefaultHostedZone()
 
 	os.Exit(m.Run())
 }
