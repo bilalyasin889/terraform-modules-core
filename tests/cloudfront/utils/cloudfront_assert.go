@@ -37,7 +37,7 @@ func GetCloudFrontDistribution(
 
 func AssertOrigin(
 	t *testing.T,
-	origin types.Origin,
+	origins []types.Origin,
 	originId string,
 	domain string,
 	connectionAttempts int,
@@ -47,17 +47,25 @@ func AssertOrigin(
 ) {
 	t.Helper()
 
-	assert.Equal(t, originId, *origin.Id)
-	assert.Equal(t, domain, *origin.DomainName)
+	for _, origin := range origins {
+		if origin.Id != nil && *origin.Id == originId {
 
-	assert.Equal(t, int32(connectionAttempts), *origin.ConnectionAttempts)
-	assert.Equal(t, int32(connectionTimeout), *origin.ConnectionTimeout)
+			assert.Equal(t, originId, *origin.Id)
+			assert.Equal(t, domain, *origin.DomainName)
 
-	assert.Empty(t, origin.CustomHeaders.Items) // TODO make param
+			assert.Equal(t, int32(connectionAttempts), *origin.ConnectionAttempts)
+			assert.Equal(t, int32(connectionTimeout), *origin.ConnectionTimeout)
 
-	assert.Equal(t, originPath, *origin.OriginPath)
+			assert.Empty(t, origin.CustomHeaders.Items)
 
-	assert.Equal(t, hasOAC, *origin.OriginAccessControlId != "")
+			assert.Equal(t, originPath, *origin.OriginPath)
+
+			assert.Equal(t, hasOAC, origin.OriginAccessControlId != nil && *origin.OriginAccessControlId != "")
+			return
+		}
+	}
+
+	t.Fatalf("origin with id %q not found", originId)
 }
 
 var DefaultAllowedMethods = []string{"GET", "HEAD", "OPTIONS"}
@@ -73,6 +81,7 @@ func AssertDefaultCacheBehaviour(
 	cachedMethods []string,
 	viewerProtocolPolicy string,
 	cachePolicyId string,
+	hasFunctionAssociations bool,
 ) {
 	t.Helper()
 
@@ -88,7 +97,41 @@ func AssertDefaultCacheBehaviour(
 
 	assert.Equal(t, cachePolicyId, *defaultBehavior.CachePolicyId)
 
-	assert.Empty(t, defaultBehavior.FunctionAssociations.Items)
+	if hasFunctionAssociations {
+		assert.NotEmpty(t, defaultBehavior.FunctionAssociations.Items)
+	} else {
+		assert.Empty(t, defaultBehavior.FunctionAssociations.Items)
+	}
+}
+
+func AssertOrderedCacheBehaviour(
+	t *testing.T,
+	cacheBehavior types.CacheBehavior,
+	originId string,
+	pathPattern string,
+	allowedMethods []string,
+	cachedMethods []string,
+	viewerProtocolPolicy string,
+	cachePolicyId string,
+) {
+	t.Helper()
+
+	assert.Equal(t, originId, *cacheBehavior.TargetOriginId)
+
+	assert.Equal(t, pathPattern, *cacheBehavior.PathPattern)
+
+	expectedAllowedMethods := mapHTTPMethods(allowedMethods)
+	assert.ElementsMatch(t, cacheBehavior.AllowedMethods.Items, expectedAllowedMethods)
+
+	expectedCachedMethods := mapHTTPMethods(cachedMethods)
+	assert.ElementsMatch(t, cacheBehavior.AllowedMethods.CachedMethods.Items, expectedCachedMethods)
+
+	assert.Equal(t, types.ViewerProtocolPolicy(viewerProtocolPolicy), cacheBehavior.ViewerProtocolPolicy)
+
+	assert.Equal(t, cachePolicyId, *cacheBehavior.CachePolicyId)
+
+	assert.Empty(t, cacheBehavior.FunctionAssociations.Items)
+
 }
 
 func mapHTTPMethods(methods []string) []types.Method {
@@ -130,4 +173,23 @@ func AssertDNSRecordsExist(
 				"record type mismatch for %s", name)
 		}
 	}
+}
+
+func AssertCustomErrorResponse(
+	t *testing.T,
+	errorResponse types.CustomErrorResponse,
+	errorCode int,
+	responseCode string,
+	responsePage string,
+	minTTL int,
+) {
+	t.Helper()
+
+	assert.Equal(t, int32(errorCode), *errorResponse.ErrorCode)
+
+	assert.Equal(t, responseCode, *errorResponse.ResponseCode)
+
+	assert.Equal(t, responsePage, *errorResponse.ResponsePagePath)
+
+	assert.Equal(t, int64(minTTL), *errorResponse.ErrorCachingMinTTL)
 }
